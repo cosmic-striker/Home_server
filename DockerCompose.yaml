@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    restart: always
+    ports:
+      - "9000:9000"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "portainer_data:/data"
+
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/tmp/docker.sock:ro"
+      - "/home/docker/nginx/certs:/etc/nginx/certs:ro"
+      - "/home/docker/nginx/vhost.d:/etc/nginx/vhost.d"
+      - "/home/docker/nginx/html:/usr/share/nginx/html"
+
+  kali:
+    image: kalilinux/kali-rolling
+    container_name: kali
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: dvwa
+    restart: always
+    environment:
+      - VIRTUAL_HOST=dvwa.local
+    expose:
+      - "80"
+
+  juice_shop:
+    image: bkimminich/juice-shop
+    container_name: juice_shop
+    restart: always
+    environment:
+      - VIRTUAL_HOST=juice.local
+    expose:
+      - "3000"
+
+  bWAPP:
+    image: raesene/bwapp
+    container_name: bwapp
+    restart: always
+    environment:
+      - VIRTUAL_HOST=bwapp.local
+    expose:
+      - "80"
+
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - VIRTUAL_HOST=gitea.local
+    restart: always
+    expose:
+      - "3000"
+    volumes:
+      - gitea_data:/data
+
+  nextcloud:
+    image: nextcloud
+    container_name: nextcloud
+    restart: always
+    environment:
+      - VIRTUAL_HOST=nextcloud.local
+    expose:
+      - "80"
+    volumes:
+      - nextcloud:/var/www/html
+
+  plex:
+    image: linuxserver/plex
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+    volumes:
+      - plex_config:/config
+      - /hdd/media:/media
+    restart: unless-stopped
+
+  vscode:
+    image: codercom/code-server
+    container_name: code_server
+    environment:
+      - PASSWORD=changeme
+      - VIRTUAL_HOST=code.local
+    expose:
+      - "8080"
+    volumes:
+      - code_server:/home/coder/project
+    restart: always
+
+  jupyter:
+    image: jupyter/base-notebook
+    container_name: jupyter
+    environment:
+      - VIRTUAL_HOST=lab.local
+    expose:
+      - "8888"
+    volumes:
+      - jupyter_data:/home/jovyan
+    restart: always
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: always
+    environment:
+      - PMA_HOST=db
+      - VIRTUAL_HOST=phpmyadmin.local
+    expose:
+      - "80"
+
+  db:
+    image: mysql:5.7
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  portainer_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/docker/portainer
+      o: bind
+
+  gitea_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/docker/gitea
+      o: bind
+
+  nextcloud:
+    driver: local
+    driver_opts:
+      type: none
+      device: /hdd/docker/nextcloud
+      o: bind
+
+  plex_config:
+    driver: local
+    driver_opts:
+      type: none
+      device: /hdd/docker/plex-config
+      o: bind
+
+  code_server:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/docker/code-server
+      o: bind
+
+  jupyter_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/docker/jupyter
+      o: bind
+
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/docker/mysql
+      o: bind
