@@ -1,188 +1,289 @@
-version: '3.8'
+# DockerCompose.yaml
+
+version: "3.9"
 
 services:
+
+  ## 🔧 Reverse Proxy – NGINX Proxy Manager
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+      - "81:81"     # Web UI
+    volumes:
+      - /home/docker_data/nginx/data:/data
+      - /home/docker_data/nginx/letsencrypt:/etc/letsencrypt
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:81"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ## 🐳 GUI – Portainer
   portainer:
     image: portainer/portainer-ce
     container_name: portainer
-    restart: always
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=portainer.local"
+      - "nginx.ssl=false"
     ports:
       - "9000:9000"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "portainer_data:/data"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  nginx-proxy:
-    image: jwilder/nginx-proxy
-    container_name: nginx_proxy
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "/var/run/docker.sock:/tmp/docker.sock:ro"
-      - "/home/docker/nginx/certs:/etc/nginx/certs:ro"
-      - "/home/docker/nginx/vhost.d:/etc/nginx/vhost.d"
-      - "/home/docker/nginx/html:/usr/share/nginx/html"
-
-  kali:
-    image: kalilinux/kali-rolling
-    container_name: kali
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-
-  dvwa:
-    image: vulnerables/web-dvwa
-    container_name: dvwa
-    restart: always
-    environment:
-      - VIRTUAL_HOST=dvwa.local
-    expose:
-      - "80"
-
-  juice_shop:
-    image: bkimminich/juice-shop
-    container_name: juice_shop
-    restart: always
-    environment:
-      - VIRTUAL_HOST=juice.local
-    expose:
-      - "3000"
-
-  bWAPP:
-    image: raesene/bwapp
-    container_name: bwapp
-    restart: always
-    environment:
-      - VIRTUAL_HOST=bwapp.local
-    expose:
-      - "80"
-
+  ## 🛠️ Gitea – Self-hosted Git Server
   gitea:
     image: gitea/gitea:latest
     container_name: gitea
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=gitea.local"
+      - "nginx.ssl=false"
+    ports:
+      - "3000:3000"
+      - "222:22"
+    volumes:
+      - /home/docker_data/gitea:/data
     environment:
       - USER_UID=1000
       - USER_GID=1000
-      - VIRTUAL_HOST=gitea.local
-    restart: always
-    expose:
-      - "3000"
-    volumes:
-      - gitea_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  ## ☁️ Nextcloud – Personal Cloud Storage
   nextcloud:
     image: nextcloud
     container_name: nextcloud
-    restart: always
-    environment:
-      - VIRTUAL_HOST=nextcloud.local
-    expose:
-      - "80"
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=nextcloud.local"
+      - "nginx.ssl=false"
+    ports:
+      - "8080:80"
     volumes:
-      - nextcloud:/var/www/html
+      - /hdd/nextcloud:/var/www/html
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/index.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  ## 🎬 Plex Media Server
   plex:
-    image: linuxserver/plex
+    image: lscr.io/linuxserver/plex
     container_name: plex
+    restart: unless-stopped
     network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
       - VERSION=docker
     volumes:
-      - plex_config:/config
-      - /hdd/media:/media
+      - /hdd/plex:/config
+      - /hdd/plex-media:/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:32400/web/index.html"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  ## 📁 File Browser
+  filebrowser:
+    image: filebrowser/filebrowser
+    container_name: filebrowser
     restart: unless-stopped
-
-  vscode:
-    image: codercom/code-server
-    container_name: code_server
-    environment:
-      - PASSWORD=changeme
-      - VIRTUAL_HOST=code.local
-    expose:
-      - "8080"
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=files.local"
+      - "nginx.ssl=false"
+    ports:
+      - "8081:80"
     volumes:
-      - code_server:/home/coder/project
-    restart: always
+      - /home:/srv
+      - /home/docker_data/filebrowser/filebrowser.db:/database.db
+      - /home/docker_data/filebrowser/settings.json:/config/settings.json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  jupyter:
+  ## 📊 JupyterLab
+  jupyterlab:
     image: jupyter/base-notebook
-    container_name: jupyter
-    environment:
-      - VIRTUAL_HOST=lab.local
-    expose:
-      - "8888"
+    container_name: jupyterlab
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=jupyter.local"
+      - "nginx.ssl=false"
+    ports:
+      - "8888:8888"
     volumes:
-      - jupyter_data:/home/jovyan
-    restart: always
+      - /home/docker_data/jupyter:/home/jovyan/work
+    environment:
+      - JUPYTER_TOKEN=yourpassword
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ## 🖥️ VS Code Server
+  code-server:
+    image: lscr.io/linuxserver/code-server
+    container_name: code-server
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=code.local"
+      - "nginx.ssl=false"
+    ports:
+      - "8443:8443"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kolkata
+      - PASSWORD=yourpassword
+    volumes:
+      - /home/docker_data/code-server:/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8443"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ## 💻 Dev Workspace
+  dev-workspace:
+    image: ubuntu:22.04
+    container_name: dev-workspace
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - /home/docker_data/dev-workspace:/workspace
+    command: tail -f /dev/null
+
+  ## 🛡️ DVWA – Vulnerable Web App
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: dvwa
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=dvwa.local"
+      - "nginx.ssl=false"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/login.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ## 🛍️ OWASP Juice Shop
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: juice-shop
+    restart: unless-stopped
+    depends_on:
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=juice.local"
+      - "nginx.ssl=false"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ## 🗄️ MySQL & phpMyAdmin
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - /home/docker_data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: phpmyadmin
-    restart: always
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nginx-proxy-manager:
+        condition: service_healthy
+    labels:
+      - "nginx.proxy=true"
+      - "nginx.domain=phpmyadmin.local"
+      - "nginx.ssl=false"
     environment:
-      - PMA_HOST=db
-      - VIRTUAL_HOST=phpmyadmin.local
-    expose:
-      - "80"
+      - PMA_HOST=mysql
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  db:
-    image: mysql:5.7
-    container_name: mysql_db
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
+  ## 🔒 Tailscale for secure remote access
+  tailscale:
+    image: tailscale/tailscale
+    container_name: tailscale
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     volumes:
-      - mysql_data:/var/lib/mysql
+      - /dev/net/tun:/dev/net/tun
+      - /home/docker_data/tailscale:/var/lib/tailscale
+    environment:
+      - TS_AUTHKEY=your_tailscale_auth_key
 
 volumes:
   portainer_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/docker/portainer
-      o: bind
-
-  gitea_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/docker/gitea
-      o: bind
-
-  nextcloud:
-    driver: local
-    driver_opts:
-      type: none
-      device: /hdd/docker/nextcloud
-      o: bind
-
-  plex_config:
-    driver: local
-    driver_opts:
-      type: none
-      device: /hdd/docker/plex-config
-      o: bind
-
-  code_server:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/docker/code-server
-      o: bind
-
-  jupyter_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/docker/jupyter
-      o: bind
-
-  mysql_data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /home/docker/mysql
-      o: bind
