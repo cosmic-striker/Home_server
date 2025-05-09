@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: always
+    ports:
+      - "81:81"         # Admin UI
+      - "80:80"         # HTTP
+      - "443:443"       # HTTPS
+    environment:
+      DB_SQLITE_FILE: "/data/database.sqlite"
+      DISABLE_IPV6: "true"
+    volumes:
+      - /SSD/nginx-proxy-manager/data:/data
+      - /SSD/nginx-proxy-manager/letsencrypt:/etc/letsencrypt

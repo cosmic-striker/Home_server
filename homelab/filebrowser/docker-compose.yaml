@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  filebrowser:
+    image: hurlenko/filebrowser
+    container_name: filebrowser
+    user: "${UID}:${GID}"
+    ports:
+      - "1231:8080"
+    volumes:
+      - /HDD/nextcloud/html:/data
+      - ./config:/config
+    environment:
+      - FB_BASEURL=/filebrowser
+    restart: always

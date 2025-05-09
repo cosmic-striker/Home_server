@@ -1,28 +1,37 @@
-# DockerCompose.yaml
-
 version: "3.9"
+
+networks:
+  proxy:
+    driver: bridge
+
+volumes:
+  portainer_data:
+  nginx_data:
+  nginx_letsencrypt:
 
 services:
 
-  ## 🔧 Reverse Proxy – NGINX Proxy Manager
+  ## ── Reverse Proxy: NGINX Proxy Manager ────────────────────────────────
   nginx-proxy-manager:
     image: jc21/nginx-proxy-manager:latest
     container_name: nginx-proxy-manager
     restart: unless-stopped
     ports:
-      - "80:80"     # HTTP
-      - "443:443"   # HTTPS
-      - "81:81"     # Web UI
+      - "80:80"    # HTTP proxy
+      - "443:443"  # HTTPS proxy
+      - "81:81"    # NPM UI
+    networks:
+      - proxy
     volumes:
-      - /home/docker_data/nginx/data:/data
-      - /home/docker_data/nginx/letsencrypt:/etc/letsencrypt
+      - nginx_data:/data
+      - nginx_letsencrypt:/etc/letsencrypt
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:81"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  ## 🐳 GUI – Portainer
+  ## ── Portainer (Docker GUI) ───────────────────────────────────────────
   portainer:
     image: portainer/portainer-ce
     container_name: portainer
@@ -30,22 +39,19 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "9000"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=portainer.local"
+      - "nginx.forward_port=9000"
       - "nginx.ssl=false"
-    ports:
-      - "9000:9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 🛠️ Gitea – Self-hosted Git Server
+  ## ── Gitea (Self-hosted Git) ───────────────────────────────────────────
   gitea:
     image: gitea/gitea:latest
     container_name: gitea
@@ -53,25 +59,22 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "3000"
+      - "22"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=gitea.local"
+      - "nginx.forward_port=3000"
       - "nginx.ssl=false"
-    ports:
-      - "3000:3000"
-      - "222:22"
-    volumes:
-      - /home/docker_data/gitea:/data
     environment:
       - USER_UID=1000
       - USER_GID=1000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    volumes:
+      - /home/docker_data/gitea:/data
 
-  ## ☁️ Nextcloud – Personal Cloud Storage
+  ## ── Nextcloud (Private Cloud) ───────────────────────────────────────
   nextcloud:
     image: nextcloud
     container_name: nextcloud
@@ -79,21 +82,18 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "80"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=nextcloud.local"
+      - "nginx.forward_port=80"
       - "nginx.ssl=false"
-    ports:
-      - "8080:80"
     volumes:
       - /hdd/nextcloud:/var/www/html
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/index.php"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 🎬 Plex Media Server
+  ## ── Plex Media Server ────────────────────────────────────────────────
   plex:
     image: lscr.io/linuxserver/plex
     container_name: plex
@@ -106,13 +106,8 @@ services:
     volumes:
       - /hdd/plex:/config
       - /hdd/plex-media:/media
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:32400/web/index.html"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
 
-  ## 📁 File Browser
+  ## ── File Browser ─────────────────────────────────────────────────────
   filebrowser:
     image: filebrowser/filebrowser
     container_name: filebrowser
@@ -120,23 +115,20 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "80"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=files.local"
+      - "nginx.forward_port=80"
       - "nginx.ssl=false"
-    ports:
-      - "8081:80"
     volumes:
       - /home:/srv
       - /home/docker_data/filebrowser/filebrowser.db:/database.db
       - /home/docker_data/filebrowser/settings.json:/config/settings.json
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 📊 JupyterLab
+  ## ── JupyterLab ───────────────────────────────────────────────────────
   jupyterlab:
     image: jupyter/base-notebook
     container_name: jupyterlab
@@ -144,23 +136,20 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "8888"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=jupyter.local"
+      - "nginx.forward_port=8888"
       - "nginx.ssl=false"
-    ports:
-      - "8888:8888"
-    volumes:
-      - /home/docker_data/jupyter:/home/jovyan/work
     environment:
       - JUPYTER_TOKEN=yourpassword
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    volumes:
+      - /home/docker_data/jupyter:/home/jovyan/work
 
-  ## 🖥️ VS Code Server
+  ## ── VS Code Server ────────────────────────────────────────────────────
   code-server:
     image: lscr.io/linuxserver/code-server
     container_name: code-server
@@ -168,12 +157,14 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "8443"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=code.local"
+      - "nginx.forward_port=8443"
       - "nginx.ssl=false"
-    ports:
-      - "8443:8443"
     environment:
       - PUID=1000
       - PGID=1000
@@ -181,13 +172,8 @@ services:
       - PASSWORD=yourpassword
     volumes:
       - /home/docker_data/code-server:/config
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8443"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 💻 Dev Workspace
+  ## ── Dev Workspace (SSD-backed) ────────────────────────────────────────
   dev-workspace:
     image: ubuntu:22.04
     container_name: dev-workspace
@@ -198,7 +184,7 @@ services:
       - /home/docker_data/dev-workspace:/workspace
     command: tail -f /dev/null
 
-  ## 🛡️ DVWA – Vulnerable Web App
+  ## ── DVWA (Vuln Web App) ──────────────────────────────────────────────
   dvwa:
     image: vulnerables/web-dvwa
     container_name: dvwa
@@ -206,17 +192,16 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "80"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=dvwa.local"
+      - "nginx.forward_port=80"
       - "nginx.ssl=false"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/login.php"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 🛍️ OWASP Juice Shop
+  ## ── OWASP Juice Shop ─────────────────────────────────────────────────
   juice-shop:
     image: bkimminich/juice-shop
     container_name: juice-shop
@@ -224,29 +209,27 @@ services:
     depends_on:
       nginx-proxy-manager:
         condition: service_healthy
+    networks:
+      - proxy
+    expose:
+      - "3000"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=juice.local"
+      - "nginx.forward_port=3000"
       - "nginx.ssl=false"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 🗄️ MySQL & phpMyAdmin
+  ## ── MySQL & phpMyAdmin ───────────────────────────────────────────────
   mysql:
     image: mysql:5.7
     container_name: mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      - MYSQL_ROOT_PASSWORD=root
     volumes:
       - /home/docker_data/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD", "mysqladmin","ping","-h","localhost","-uroot","-proot"]
       interval: 30s
-      timeout: 10s
       retries: 5
 
   phpmyadmin:
@@ -254,23 +237,20 @@ services:
     container_name: phpmyadmin
     restart: unless-stopped
     depends_on:
-      mysql:
-        condition: service_healthy
-      nginx-proxy-manager:
-        condition: service_healthy
+      - mysql
+      - nginx-proxy-manager
+    networks:
+      - proxy
+    expose:
+      - "80"
     labels:
-      - "nginx.proxy=true"
       - "nginx.domain=phpmyadmin.local"
+      - "nginx.forward_port=80"
       - "nginx.ssl=false"
     environment:
       - PMA_HOST=mysql
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  ## 🔒 Tailscale for secure remote access
+  ## ── Tailscale (VPN) ──────────────────────────────────────────────────
   tailscale:
     image: tailscale/tailscale
     container_name: tailscale
@@ -285,5 +265,3 @@ services:
     environment:
       - TS_AUTHKEY=your_tailscale_auth_key
 
-volumes:
-  portainer_data:
